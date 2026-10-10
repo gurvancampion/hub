@@ -351,6 +351,13 @@
       "when": 1792167954503,
       "tag": "0049_github_installation_syncs",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1792267443824,
+      "tag": "0050_hub_mcp_scopes",
+      "breakpoints": true
     }
   ]
 }
