@@ -36,7 +36,12 @@ export interface AgentConnection {
   send(agentId: string, messageId: string, text: string, timeoutMs?: number): Promise<void>;
   restore(workspaceId: string, timeoutMs?: number): Promise<boolean>;
   control(agentId: string, workspaceId: string, action: "interrupt" | "archive"): Promise<void>;
-  watch(agentId: string, listener: (event: AgentEvent) => void): Promise<() => void>;
+  /** Prepare unattended permissions for the persisted provider before subscribing. */
+  watch(
+    agentId: string,
+    listener: (event: AgentEvent) => void,
+    unattendedProvider?: string,
+  ): Promise<() => void>;
 }
 
 const EnvelopeSchema = z.object({
@@ -135,6 +140,7 @@ export class DaemonAgents implements AgentConnection, AgentControlConnection {
           model: options.model,
           modeId: options.mode,
           thinkingOptionId: options.thinkingOptionId,
+          featureValues: options.featureValues,
           providerOptions: options.providerOptions,
           mcpServers: options.mcpServers,
           toolPolicy: options.toolPolicy,
@@ -255,7 +261,20 @@ export class DaemonAgents implements AgentConnection, AgentControlConnection {
   async archiveWorkspace(workspaceId: string) {
     await this.request({ type: "archive_workspace_request", workspaceId });
   }
-  async watch(agentId: string, listener: (event: AgentEvent) => void): Promise<() => void> {
+  async watch(
+    agentId: string,
+    listener: (event: AgentEvent) => void,
+    unattendedProvider?: string,
+  ): Promise<() => void> {
+    // Reapply on continuation, workspace restore, and Hub reconnect before delivering any prompt.
+    // Use the config RPC authorized by hub.execute, rather than requesting workspace.write.
+    if (unattendedProvider === "cursor") {
+      await this.request({
+        type: "agent.config.apply.request",
+        agentId,
+        config: { featureValues: { auto_accept: true } },
+      });
+    }
     const listeners = this.listeners.get(agentId) ?? new Set();
     listeners.add(listener);
     this.listeners.set(agentId, listeners);

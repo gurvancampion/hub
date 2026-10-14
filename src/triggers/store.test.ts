@@ -114,8 +114,26 @@ describe("organization trigger store", () => {
         yaml: triggerYaml(true).replace("provider: codex", "provider: omp"),
         userId: null,
       }),
-      /run\.agent\.provider: Provider 'omp' cannot run unattended Hub automations; select Claude, Codex, or OpenCode/u,
+      /run\.agent\.provider: Provider 'omp' cannot run unattended Hub automations; select Claude, Codex, OpenCode, or Cursor/u,
     );
+  });
+
+  it("accepts Cursor with its native model, mode, and thinking option", async () => {
+    const database = await enrolledDatabase();
+    const store = new OrganizationTriggerStore(
+      database,
+      "org",
+      catalogAgentValidator({ cursor: { models: ["grok-4.7"], modes: ["agent", "plan", "ask"] } }),
+    );
+    const trigger = await store.save({
+      yaml: triggerYaml(true).replace(
+        "agent: { provider: codex, mode: full-access }",
+        "agent: { provider: cursor, model: grok-4.7, mode: agent, thinkingOptionId: medium }",
+      ),
+      userId: null,
+    });
+
+    assert.equal((await store.activeRevision(trigger)).version, 1);
   });
 
   it("refuses a new trigger while the target daemon cannot be asked", async () => {

@@ -1152,7 +1152,7 @@ function ProviderCatalogFields({
       <FormField
         id="trigger-agent"
         label="Agent"
-        description="Models the selected daemon can run unattended: Claude, Codex, or OpenCode."
+        description="Models the selected daemon can run unattended: Claude, Codex, OpenCode, or Cursor."
         required
         {...fieldError(errors, "agent")}
       >

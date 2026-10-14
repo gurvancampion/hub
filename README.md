@@ -49,6 +49,9 @@ Choose the local Hub URL when prompted. The guided setup connects your daemon, u
 
 See the [Hub documentation](https://paseo.sh/docs/hub) for PostgreSQL, Docker, public URLs, environment-managed configuration, and production deployment.
 
+Unattended triggers support Claude, Codex, OpenCode, and Cursor. Cursor requires daemon-side
+MCP preapproval support; see [unattended provider requirements](docs/unattended-providers.md).
+
 ## Develop locally
 
 You need Node.js and npm. A fresh checkout runs with an embedded database and no external services:

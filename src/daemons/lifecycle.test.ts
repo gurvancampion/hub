@@ -73,9 +73,14 @@ describe("durable Hub action acknowledgement state", () => {
     assert.equal(JSON.stringify(diagnostic).includes("credential detail"), false);
   });
 
-  it.each(["spawning", "running"] as const)(
-    "recovers %s delivery and observation when reconnects overlap after creation",
-    async (status) => {
+  it.each([
+    ["spawning", "codex"],
+    ["running", "codex"],
+    ["spawning", "cursor"],
+    ["running", "cursor"],
+  ] as const)(
+    "recovers %s %s delivery and observation when reconnects overlap after creation",
+    async (status, provider) => {
       const database = createMemoryDatabase();
       const daemon = daemonRecord();
       const intent: LaunchMachineIntent = {
@@ -91,7 +96,7 @@ describe("durable Hub action acknowledgement state", () => {
           authoredSlug: daemon.slug,
           cwd: "/repo",
         },
-        agent: { provider: "codex" },
+        agent: { provider },
         prompt: "Full prompt ".repeat(100),
         allowOutputs: [],
         autoArchive: false,
@@ -126,14 +131,19 @@ describe("durable Hub action acknowledgement state", () => {
       let subscriptions = 0;
       const agent = { id: AGENT_ID, workspaceId: "workspace-reconnect", status: "idle" as const };
       const agents: AgentConnection = {
-        create: async () => {
+        create: async (_key, options) => {
+          assert.deepEqual(
+            options.featureValues,
+            provider === "cursor" ? { auto_accept: true } : undefined,
+          );
           creates++;
           return agent;
         },
         get: async () => agent,
         restore: async () => true,
         control: async () => {},
-        watch: async () => {
+        watch: async (_agentId, _listener, watchedProvider) => {
+          assert.equal(watchedProvider, provider);
           subscriptions++;
           return () => {
             subscriptions--;

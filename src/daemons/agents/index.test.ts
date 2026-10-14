@@ -100,6 +100,125 @@ test("a titled creation names the agent and then the workspace the daemon create
   });
 });
 
+test("Cursor creation enables ACP permission auto-accept and preserves the exact Hub tool policy", async () => {
+  const requests: Record<string, unknown>[] = [];
+  const agents = connect(requests);
+  const mcpServers = {
+    hub: { type: "http" as const, url: "https://hub.test/executions/test/mcp" },
+  };
+  await agents.create("cursor-key", {
+    ...options,
+    provider: "cursor",
+    model: "grok-4.7",
+    mode: "agent",
+    thinkingOptionId: "medium",
+    featureValues: { auto_accept: true },
+    providerOptions: {},
+    mcpServers,
+  });
+  const config = z.record(z.string(), z.unknown()).parse(requests[0]?.["config"]);
+  expect(config["toolPolicy"]).toEqual(options.toolPolicy);
+  expect(config["mcpServers"]).toEqual(mcpServers);
+
+  expect(requests[0]).toMatchObject({
+    type: "create_agent_request",
+    config: {
+      provider: "cursor",
+      model: "grok-4.7",
+      modeId: "agent",
+      thinkingOptionId: "medium",
+      featureValues: { auto_accept: true },
+      toolPolicy: options.toolPolicy,
+      providerOptions: {},
+    },
+  });
+  expect(requests[0]?.["config"]).not.toHaveProperty("systemPrompt");
+});
+
+test("ordinary Cursor creation preserves the caller's permission feature settings", async () => {
+  const requests: Record<string, unknown>[] = [];
+  const agents = connect(requests);
+  await agents.create("interactive-cursor", {
+    ...options,
+    provider: "cursor",
+    providerOptions: {},
+  });
+  expect(requests[0]?.["config"]).not.toHaveProperty("featureValues");
+  await agents.create("explicit-cursor", {
+    ...options,
+    provider: "cursor",
+    providerOptions: {},
+    featureValues: { auto_accept: false },
+  });
+  expect(requests[1]).toMatchObject({ config: { featureValues: { auto_accept: false } } });
+  agents.close();
+});
+
+test("Cursor observation reapplies auto-accept before each prompt, including after reconnect", async () => {
+  const requests: Record<string, unknown>[] = [];
+  let agents = connect(requests);
+  for (let turn = 0; turn < 3; turn++) {
+    if (turn === 2) {
+      agents.close();
+      agents = connect(requests);
+    }
+    const start = requests.length;
+    const unsubscribe = await agents.watch("existing-cursor", () => {}, "cursor");
+    await agents.send("existing-cursor", `turn-${turn}`, "Continue");
+    const current = requests.slice(start);
+    expect(current[0]).toMatchObject({
+      type: "agent.config.apply.request",
+      agentId: "existing-cursor",
+      config: { featureValues: { auto_accept: true } },
+    });
+    expect(current.at(-1)).toMatchObject({ type: "send_agent_message_request" });
+    unsubscribe();
+  }
+  agents.close();
+});
+
+test.each(["claude", "codex", "opencode"])(
+  "%s keeps its authored permission settings without ACP auto-accept",
+  async (provider) => {
+    const requests: Record<string, unknown>[] = [];
+    const agents = connect(requests);
+    await agents.create("key", { ...options, provider });
+    await agents.watch("agent", () => {}, provider);
+    expect(requests[0]?.["config"]).not.toHaveProperty("featureValues");
+    expect(requests.some((request) => request["type"] === "agent.config.apply.request")).toBe(
+      false,
+    );
+    agents.close();
+  },
+);
+
+test("a refused Cursor auto-accept configuration stops dispatch before subscribing or sending", async () => {
+  const requests: Record<string, unknown>[] = [];
+  const agents = new DaemonAgents((frame) => {
+    const { message } = z
+      .object({ message: z.record(z.string(), z.unknown()) })
+      .parse(JSON.parse(frame));
+    requests.push(message);
+    agents.receive({
+      type: "session",
+      message: {
+        type: "agent.config.apply.response",
+        payload: {
+          requestId: message["requestId"],
+          accepted: false,
+          error: "auto_accept unavailable",
+        },
+      },
+    });
+  });
+  enable(agents);
+  await expect(agents.watch("cursor-agent", () => {}, "cursor")).rejects.toThrow(
+    "auto_accept unavailable",
+  );
+  expect(requests.map((request) => request["type"])).toEqual(["agent.config.apply.request"]);
+  agents.close();
+});
+
 test("a rejected workspace title is reported and leaves the titled agent usable", async () => {
   const requests: Record<string, unknown>[] = [];
   const failures: string[] = [];

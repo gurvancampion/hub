@@ -159,7 +159,12 @@ export class AgentSessions {
         action = "restored";
       }
       await this.database.attachExecutionToSession(input.executionId, id, action);
-      const unsubscribe = await this.deliver(input, session.agentId, startupTimeoutMs);
+      const unsubscribe = await this.deliver(
+        input,
+        session.agentId,
+        session.creationOptions.provider,
+        startupTimeoutMs,
+      );
       return { agentId: session.agentId, unsubscribe, action };
     });
     return dispatched ?? this.dispatch(input);
@@ -173,9 +178,10 @@ export class AgentSessions {
       onEvent: (event: AgentEvent) => void;
     },
     agentId: string,
+    provider: string,
     startupTimeoutMs: number,
   ): Promise<() => void> {
-    const unsubscribe = await input.connection.watch(agentId, input.onEvent);
+    const unsubscribe = await input.connection.watch(agentId, input.onEvent, provider);
     try {
       const execution = await this.database.findAgentExecutionById(input.executionId);
       if (!execution || !isActive(execution)) throw new AgentSessionError("execution_terminal");

@@ -1053,8 +1053,13 @@ export class DaemonDispatchLifecycle {
   ): Promise<void> {
     const execution = await this.options.database.findAgentExecutionById(executionId);
     if (!execution?.daemonAgentId) return;
-    const unsubscribe = await connection.agents.watch(execution.daemonAgentId, (event) =>
-      this.observeSessionEvent(executionId, daemonId, event),
+    const session = execution.agentSessionId
+      ? await this.options.database.findAgentSession(execution.agentSessionId)
+      : undefined;
+    const unsubscribe = await connection.agents.watch(
+      execution.daemonAgentId,
+      (event) => this.observeSessionEvent(executionId, daemonId, event),
+      session?.creationOptions.provider ?? execution.launchIntent?.agent.provider,
     );
     this.executionSubscriptions.get(executionId)?.();
     this.executionSubscriptions.set(executionId, unsubscribe);
@@ -1935,6 +1940,7 @@ async function buildCreateAgentOptions(
 ): Promise<DaemonCreateAgentOptions> {
   return {
     provider: intent.agent.provider,
+    ...(intent.agent.provider === "cursor" ? { featureValues: { auto_accept: true } } : {}),
     title: EXECUTION_AGENT_TITLE,
     workspaceTitle: executionWorkspaceTitle(intent, hubExecutionEnv.executionId),
     ...(intent.agent.mode === undefined ? {} : { mode: intent.agent.mode }),

@@ -15,6 +15,7 @@ export interface DaemonCreateAgentOptions {
   mode?: string;
   model?: string;
   thinkingOptionId?: string;
+  featureValues?: Readonly<Record<string, JsonValue>>;
   providerOptions?: Readonly<Record<string, JsonValue>>;
   toolPolicy: ToolPolicy;
   cwd: string;

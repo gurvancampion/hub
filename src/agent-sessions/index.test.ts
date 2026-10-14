@@ -4,7 +4,7 @@ import { AgentSessions } from "./index.js";
 import { createMemoryDatabase } from "../db/memory.js";
 import { OutputExecutorRegistry, replyOutputTool } from "../execution-capabilities/outputs.js";
 import { createExecutionCapabilityServer } from "../execution-capabilities/server.js";
-import type { AgentConnection, AgentSnapshot } from "../daemons/agents/index.js";
+import type { AgentConnection, AgentEvent, AgentSnapshot } from "../daemons/agents/index.js";
 import type { LaunchMachineIntent } from "../dispatcher/launch-machine-intent.js";
 import type { DaemonCreateAgentOptions } from "../daemons/protocol.js";
 
@@ -12,6 +12,7 @@ class TestAgents implements AgentConnection {
   readonly agents = new Map<string, AgentSnapshot>();
   readonly deliveries: { agentId: string; text: string }[] = [];
   readonly creates: DaemonCreateAgentOptions[] = [];
+  readonly watchedProviders: (string | undefined)[] = [];
   readonly messages = new Set<string>();
   archives = 0;
   restorations = 0;
@@ -31,7 +32,8 @@ class TestAgents implements AgentConnection {
     this.messages.add(messageId);
     this.deliveries.push({ agentId, text });
   }
-  async watch() {
+  async watch(_agentId: string, _listener: (event: AgentEvent) => void, provider?: string) {
+    this.watchedProviders.push(provider);
     return () => {};
   }
   async restore(workspaceId: string) {
@@ -119,7 +121,7 @@ async function fixture(now = Date.now) {
           connection,
           onEvent: () => {},
           createOptions: async () => ({
-            provider: "codex",
+            provider: intent.agent.provider,
             cwd: "/repo",
             env: intent.github === undefined ? {} : { GH_TOKEN: "scoped-github-token" },
             toolPolicy: { preapproved: [] },
@@ -180,6 +182,25 @@ test("same-key arrivals share an agent; an earlier completion cannot archive new
   expect(f.connection.archives).toBe(1);
   const third = await f.arrival();
   expect(await third.dispatch()).toMatchObject({ agentId: a.agentId, action: "restored" });
+  expect(f.connection.restorations).toBe(1);
+});
+
+test("Cursor creation, continuation, and restore all prepare the stored session's provider", async () => {
+  const f = await fixture();
+  const cursor = {
+    agent: { provider: "cursor", mode: "agent", model: "grok-4.7", thinkingOptionId: "medium" },
+  };
+  const first = await f.arrival("cursor-session", "daemon", {}, "first", cursor);
+  const created = await first.dispatch();
+  const second = await f.arrival("cursor-session", "daemon", {}, "continue", cursor);
+  expect(await second.dispatch()).toMatchObject({ agentId: created.agentId, action: "continued" });
+  await f.database.transitionAgentExecution(first.executionId, "succeeded");
+  await f.database.transitionAgentExecution(second.executionId, "succeeded");
+  await f.sessions.control(await f.execution(second.executionId), f.connection, "archive");
+  const third = await f.arrival("cursor-session", "daemon", {}, "restore", cursor);
+  expect(await third.dispatch()).toMatchObject({ agentId: created.agentId, action: "restored" });
+  expect(f.connection.watchedProviders).toEqual(["cursor", "cursor", "cursor"]);
+  expect(f.connection.creates).toHaveLength(1);
   expect(f.connection.restorations).toBe(1);
 });
 
