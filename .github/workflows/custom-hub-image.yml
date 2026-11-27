@@ -3,7 +3,7 @@ name: Build custom Hub image
 on:
   push:
     branches:
-      - deploy/hub-2026-10-17
+      - deploy/hub-2026-11-27
 
 permissions:
   contents: read
@@ -32,11 +32,11 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ghcr.io/gurvancampion/paseo-hub:2026-10-17
+          tags: ghcr.io/gurvancampion/paseo-hub:2026-11-27
           labels: |
             org.opencontainers.image.source=https://github.com/gurvancampion/hub
             org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=0.10.0-gurvan-2026-10-17
+            org.opencontainers.image.version=0.10.0-gurvan-2026-11-27
             org.opencontainers.image.licenses=Apache-2.0
           cache-from: type=gha,scope=custom-hub
           cache-to: type=gha,scope=custom-hub,mode=max
